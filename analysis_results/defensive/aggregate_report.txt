@@ -1,0 +1,18 @@
+======================================================================
+AGGREGATE ANALYSIS REPORT
+======================================================================
+
+Directory: gameplay_data/defensive
+Expected Playstyle: defensive
+Total Sessions: 1
+
+Label Validation:
+  Labeled Sessions: 1
+  Correct Classifications: 0
+  Accuracy: 0.0%
+
+Classification Distribution:
+  sniper: 1 (100.0%)
+
+Individual Results:
+  ✗ gameplay_data_20250929_142928.json: defensive → sniper (100.0%)

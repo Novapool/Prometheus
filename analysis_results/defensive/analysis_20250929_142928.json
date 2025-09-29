@@ -1,0 +1,50 @@
+{
+  "session_id": "20250929_142928",
+  "playstyle_label": "defensive",
+  "analysis_timestamp": "2025-09-29T14:31:50.121518",
+  "classification": {
+    "primary": "sniper",
+    "primary_confidence": 1.0,
+    "secondary": "aggressive",
+    "secondary_confidence": 0.7,
+    "all_scores": {
+      "aggressive": 0.7,
+      "defensive": 0.2,
+      "sniper": 1.0,
+      "chaotic": 0.3
+    }
+  },
+  "features": {
+    "shot_accuracy": 0.6241610738255033,
+    "damage_per_shot": 6.241610738255034,
+    "total_damage_dealt": 930,
+    "total_damage_taken": 105,
+    "enemies_killed": 31,
+    "shots_fired": 149,
+    "shots_hit": 93,
+    "avg_enemy_distance": 468.200892961346,
+    "cover_usage_pct": 0.220949263502455,
+    "mobility_index": 108.82776474350963,
+    "distance_traveled": 11334.09510847738,
+    "session_duration": 104.14709091186523,
+    "aggression_score": 0.297655937660648,
+    "shot_frequency": 1.4306688616592438,
+    "survivability": 1.0081894662699369,
+    "damage_efficiency": 8.773584905660377
+  },
+  "adaptations": {
+    "strategy": "Close distance and disrupt long-range advantage",
+    "recommendations": [
+      "Deploy fast-moving rush enemies",
+      "Use unpredictable movement patterns",
+      "Spawn enemies closer to player",
+      "Increase enemy movement speed",
+      "Add cover destruction mechanics"
+    ],
+    "enemy_type_ratio": {
+      "basic": 0.7,
+      "sniper": 0.3
+    },
+    "difficulty_modifier": 1.15
+  }
+}
