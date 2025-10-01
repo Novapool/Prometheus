@@ -9,45 +9,55 @@ class GameplayAnalyzer:
     # Classification thresholds
     THRESHOLDS = {
         'avg_enemy_distance': {
-            'close': 100,      # < 100px = close combat
-            'medium': 200,     # 100-200px = medium range
-            'far': 200         # > 200px = long range
+            'close': 120,      # < 120px = close combat
+            'medium': 180,     # 120-180px = medium range
+            'far': 180         # > 180px = long range
         },
         'cover_usage': {
-            'low': 0.3,        # < 30% = rarely uses cover
-            'medium': 0.6,     # 30-60% = moderate cover usage
-            'high': 0.6        # > 60% = heavy cover usage
+            'low': 0.2,        # < 20% = rarely uses cover
+            'medium': 0.4,     # 20-40% = moderate cover usage
+            'high': 0.5        # > 50% = heavy cover usage (more lenient)
         },
         'shot_accuracy': {
-            'poor': 0.3,       # < 30% accuracy
-            'good': 0.5,       # 30-50% accuracy
+            'poor': 0.25,      # < 25% accuracy
+            'good': 0.4,       # 25-40% accuracy
             'excellent': 0.5   # > 50% accuracy
         },
         'aggression': {
-            'low': 0.1,        # < 0.1 kills per second
-            'medium': 0.2,     # 0.1-0.2 kills per second
-            'high': 0.2        # > 0.2 kills per second
+            'low': 0.08,       # < 0.08 kills per second
+            'medium': 0.15,    # 0.08-0.15 kills per second
+            'high': 0.15       # > 0.15 kills per second
         },
         'damage_dealt': {
-            'low': 50,         # < 50 damage
-            'medium': 100,     # 50-100 damage
-            'high': 100        # > 100 damage
+            'low': 100,        # < 100 damage
+            'medium': 200,     # 100-200 damage
+            'high': 200        # > 200 damage
         },
         'survivability_rate': {
-            'excellent': 0.5,  # < 0.5 damage per second
-            'good': 1.0,       # 0.5-1.0 damage per second
-            'poor': 1.0        # > 1.0 damage per second
+            'excellent': 0.8,  # < 0.8 damage per second (more lenient)
+            'good': 1.5,       # 0.8-1.5 damage per second
+            'poor': 1.5        # > 1.5 damage per second
         },
         'mobility_index': {
-            'very_low': 30,    # < 30 px/sec
-            'low': 100,        # 30-100 px/sec
-            'medium': 200,     # 100-200 px/sec
-            'high': 200        # > 200 px/sec
+            'very_low': 20,    # < 20 px/sec
+            'low': 80,         # 20-80 px/sec
+            'medium': 150,     # 80-150 px/sec
+            'high': 150        # > 150 px/sec
         },
         'damage_efficiency': {
-            'poor': 1.0,       # < 1.0x
-            'good': 2.0,       # 1.0-2.0x
-            'excellent': 2.0   # > 2.0x
+            'poor': 0.8,       # < 0.8x (more lenient)
+            'good': 1.5,       # 0.8-1.5x
+            'excellent': 1.5   # > 1.5x
+        },
+        'retreat_pct': {
+            'low': 0.2,        # < 20% retreat movement
+            'medium': 0.4,     # 20-40% retreat movement
+            'high': 0.4        # > 40% retreat movement (tactical retreat)
+        },
+        'pursuit_pct': {
+            'low': 0.2,        # < 20% pursuit movement
+            'medium': 0.4,     # 20-40% pursuit movement
+            'high': 0.4        # > 40% pursuit movement (aggressive)
         }
     }
 
@@ -136,7 +146,9 @@ class GameplayAnalyzer:
             return {
                 'avg_enemy_distance': 0,
                 'cover_usage_pct': 0,
-                'mobility_index': 0
+                'mobility_index': 0,
+                'retreat_pct': 0,
+                'pursuit_pct': 0
             }
 
         # Calculate average enemy distance across all sampled frames
@@ -153,11 +165,24 @@ class GameplayAnalyzer:
         session_duration = self._calculate_session_duration()
         mobility_index = distance_traveled / session_duration if session_duration > 0 else 0
 
+        # Calculate retreat and pursuit percentages
+        stats = self.data['player_stats']
+        total_movement_frames = stats.get('retreat_frames', 0) + stats.get('pursuit_frames', 0) + stats.get('neutral_frames', 0)
+
+        if total_movement_frames > 0:
+            retreat_pct = stats.get('retreat_frames', 0) / total_movement_frames
+            pursuit_pct = stats.get('pursuit_frames', 0) / total_movement_frames
+        else:
+            retreat_pct = 0
+            pursuit_pct = 0
+
         return {
             'avg_enemy_distance': avg_distance,
             'cover_usage_pct': cover_usage_pct,
             'mobility_index': mobility_index,
-            'distance_traveled': distance_traveled
+            'distance_traveled': distance_traveled,
+            'retreat_pct': retreat_pct,
+            'pursuit_pct': pursuit_pct
         }
 
     def _extract_temporal_metrics(self) -> Dict:
@@ -219,7 +244,6 @@ class GameplayAnalyzer:
         scores = {
             'aggressive': self._calculate_aggressive_score(),
             'defensive': self._calculate_defensive_score(),
-            'sniper': self._calculate_sniper_score(),
             'chaotic': self._calculate_chaotic_score()
         }
 
@@ -239,91 +263,101 @@ class GameplayAnalyzer:
         return self.classification
 
     def _calculate_aggressive_score(self) -> float:
-        """Calculate how aggressive the player is."""
+        """Calculate how aggressive the player is.
+
+        Aggressive = pursues enemies, close-range combat, high mobility, rushes in.
+        """
         score = 0.0
+
+        # Pursuit movement - PRIMARY indicator of aggressive play
+        if self.features.get('pursuit_pct', 0) > self.THRESHOLDS['pursuit_pct']['high']:
+            score += 0.35  # Main indicator
+        elif self.features.get('pursuit_pct', 0) > self.THRESHOLDS['pursuit_pct']['medium']:
+            score += 0.2
 
         # Close combat preference
         if self.features['avg_enemy_distance'] < self.THRESHOLDS['avg_enemy_distance']['close']:
-            score += 0.3
+            score += 0.25
 
-        # High aggression rate
+        # High aggression rate (kills per second)
         if self.features['aggression_score'] > self.THRESHOLDS['aggression']['high']:
-            score += 0.3
+            score += 0.2
 
-        # Low cover usage (rushes in)
+        # High mobility (rushing around)
+        if self.features['mobility_index'] > self.THRESHOLDS['mobility_index']['medium']:
+            score += 0.1
+
+        # Low cover usage (optional - rushes in the open)
         if self.features['cover_usage_pct'] < self.THRESHOLDS['cover_usage']['low']:
-            score += 0.2
-
-        # High damage output
-        if self.features['total_damage_dealt'] > self.THRESHOLDS['damage_dealt']['high']:
-            score += 0.2
+            score += 0.1
 
         return min(score, 1.0)
 
     def _calculate_defensive_score(self) -> float:
-        """Calculate how defensive/cautious the player is."""
+        """Calculate how defensive/cautious the player is.
+
+        Defensive = tactical retreat, maintains distance, uses cover, prioritizes survival.
+        Movement is AWAY from enemies to reposition, not toward them.
+        """
         score = 0.0
 
-        # High cover usage
-        if self.features['cover_usage_pct'] > self.THRESHOLDS['cover_usage']['high']:
-            score += 0.3
-
-        # Maintains distance
-        if self.features['avg_enemy_distance'] > self.THRESHOLDS['avg_enemy_distance']['medium']:
+        # Retreat movement - PRIMARY indicator of defensive play
+        if self.features.get('retreat_pct', 0) > self.THRESHOLDS['retreat_pct']['high']:
+            score += 0.35  # Main indicator: retreating to reposition
+        elif self.features.get('retreat_pct', 0) > self.THRESHOLDS['retreat_pct']['medium']:
             score += 0.2
+
+        # Maintains distance from enemies
+        if self.features['avg_enemy_distance'] > self.THRESHOLDS['avg_enemy_distance']['far']:
+            score += 0.25
+        elif self.features['avg_enemy_distance'] > self.THRESHOLDS['avg_enemy_distance']['medium']:
+            score += 0.15
 
         # Low damage taken (good survivability)
         if self.features['survivability'] < self.THRESHOLDS['survivability_rate']['excellent']:
-            score += 0.3
-
-        # Low aggression
-        if self.features['aggression_score'] < self.THRESHOLDS['aggression']['low']:
             score += 0.2
+
+        # Cover usage when available
+        if self.features['cover_usage_pct'] > self.THRESHOLDS['cover_usage']['medium']:
+            score += 0.15
+
+        # Good accuracy (patient, deliberate shots from safe positions)
+        if self.features['shot_accuracy'] > self.THRESHOLDS['shot_accuracy']['good']:
+            score += 0.05
 
         return min(score, 1.0)
 
-    def _calculate_sniper_score(self) -> float:
-        """Calculate sniper/kiter playstyle."""
-        score = 0.0
-
-        # Long range preference
-        if self.features['avg_enemy_distance'] > self.THRESHOLDS['avg_enemy_distance']['far']:
-            score += 0.3
-
-        # Good accuracy
-        if self.features['shot_accuracy'] > self.THRESHOLDS['shot_accuracy']['excellent']:
-            score += 0.3
-
-        # High mobility (kiting)
-        if self.features['mobility_index'] > self.THRESHOLDS['mobility_index']['low']:
-            score += 0.2
-
-        # Good damage efficiency
-        if self.features['damage_efficiency'] > self.THRESHOLDS['damage_efficiency']['excellent']:
-            score += 0.2
-
-        return min(score, 1.0)
 
     def _calculate_chaotic_score(self) -> float:
-        """Calculate chaotic/panicked playstyle."""
+        """Calculate chaotic/panicked playstyle.
+
+        Chaotic = no clear strategy, inconsistent movement, poor accuracy, medium range,
+        neither retreating strategically nor pursuing aggressively.
+        """
         score = 0.0
 
-        # Poor accuracy
+        # Poor accuracy - key indicator of panic/chaos
         if self.features['shot_accuracy'] < self.THRESHOLDS['shot_accuracy']['poor']:
             score += 0.3
 
-        # High damage taken
+        # High damage taken (poor survivability)
         if self.features['survivability'] > self.THRESHOLDS['survivability_rate']['poor']:
-            score += 0.3
+            score += 0.25
 
         # Poor damage efficiency
         if self.features['damage_efficiency'] < self.THRESHOLDS['damage_efficiency']['poor']:
             score += 0.2
 
-        # Very high or very low mobility (either running around or frozen)
-        if (self.features['mobility_index'] > self.THRESHOLDS['mobility_index']['high'] or
-            self.features['mobility_index'] < self.THRESHOLDS['mobility_index']['very_low']):
-            score += 0.2
+        # No clear movement pattern - neither retreating nor pursuing consistently
+        retreat = self.features.get('retreat_pct', 0)
+        pursuit = self.features.get('pursuit_pct', 0)
+        if retreat < self.THRESHOLDS['retreat_pct']['medium'] and pursuit < self.THRESHOLDS['pursuit_pct']['medium']:
+            score += 0.15  # Erratic/unfocused movement
+
+        # Medium distance combat (not committing to either close or far)
+        if (self.features['avg_enemy_distance'] >= self.THRESHOLDS['avg_enemy_distance']['close'] and
+            self.features['avg_enemy_distance'] <= self.THRESHOLDS['avg_enemy_distance']['far']):
+            score += 0.1
 
         return min(score, 1.0)
 
@@ -339,7 +373,7 @@ class GameplayAnalyzer:
                 'strategy': 'Counter aggressive rushers with defensive tactics',
                 'recommendations': [
                     'Increase enemy spawn distance from player',
-                    'Deploy more sniper-type enemies',
+                    'Deploy more ranged/sniper-type enemies',
                     'Enemies should maintain distance and kite',
                     'Use cover more effectively',
                     'Implement retreat behavior when player gets close'
@@ -358,18 +392,6 @@ class GameplayAnalyzer:
                 ],
                 'enemy_type_ratio': {'basic': 0.8, 'sniper': 0.2},
                 'difficulty_modifier': 1.1
-            },
-            'sniper': {
-                'strategy': 'Close distance and disrupt long-range advantage',
-                'recommendations': [
-                    'Deploy fast-moving rush enemies',
-                    'Use unpredictable movement patterns',
-                    'Spawn enemies closer to player',
-                    'Increase enemy movement speed',
-                    'Add cover destruction mechanics'
-                ],
-                'enemy_type_ratio': {'basic': 0.7, 'sniper': 0.3},
-                'difficulty_modifier': 1.15
             },
             'chaotic': {
                 'strategy': 'Provide more structured challenge to build skills',
@@ -418,7 +440,6 @@ Confidence:       {self.classification['secondary_confidence']*100:.1f}%
 All Scores:
   - Aggressive: {self.classification['all_scores']['aggressive']*100:.1f}%
   - Defensive:  {self.classification['all_scores']['defensive']*100:.1f}%
-  - Sniper:     {self.classification['all_scores']['sniper']*100:.1f}%
   - Chaotic:    {self.classification['all_scores']['chaotic']*100:.1f}%
 
 {'='*70}
@@ -437,6 +458,11 @@ Spatial Behavior:
   - Cover Usage:          {self.features['cover_usage_pct']*100:.1f}%
   - Distance Traveled:    {self.features['distance_traveled']:.1f} pixels
   - Mobility Index:       {self.features['mobility_index']:.1f} px/sec
+
+Movement Patterns:
+  - Retreat Movement:     {self.features.get('retreat_pct', 0)*100:.1f}% (moving away from enemies)
+  - Pursuit Movement:     {self.features.get('pursuit_pct', 0)*100:.1f}% (moving toward enemies)
+  - Neutral Movement:     {(1 - self.features.get('retreat_pct', 0) - self.features.get('pursuit_pct', 0))*100:.1f}% (sideways/stationary)
 
 Aggression Metrics:
   - Kills per Second:     {self.features['aggression_score']:.3f}

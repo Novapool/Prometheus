@@ -53,7 +53,10 @@ class DataLogger:
                 'enemies_killed': 0,
                 'time_in_cover': 0,
                 'distance_traveled': 0,
-                'reloads': 0
+                'reloads': 0,
+                'retreat_frames': 0,
+                'pursuit_frames': 0,
+                'neutral_frames': 0
             },
             'behavioral_metrics': [],
             'combat_decisions': [],
@@ -86,6 +89,15 @@ class DataLogger:
         self.was_in_cover = using_cover
         self.last_cover_check_time = current_time
 
+        # Track movement direction relative to enemies
+        movement_direction = self._calculate_movement_direction(player, enemies)
+        if movement_direction == 'retreat':
+            self.game_data['player_stats']['retreat_frames'] += 1
+        elif movement_direction == 'pursuit':
+            self.game_data['player_stats']['pursuit_frames'] += 1
+        else:
+            self.game_data['player_stats']['neutral_frames'] += 1
+
         frame_data = {
             'timestamp': current_time,
             'player_position': (player.x, player.y),
@@ -96,7 +108,8 @@ class DataLogger:
             'nearest_enemy_distance': self._calculate_nearest_enemy_distance((player.x, player.y), enemies),
             'near_cover': self._check_near_cover((player.x, player.y), cover_objects),
             'using_cover': using_cover,
-            'is_reloading': player.is_reloading
+            'is_reloading': player.is_reloading,
+            'movement_direction': movement_direction
         }
 
         # Only log every 10 frames to avoid excessive data
@@ -149,6 +162,52 @@ class DataLogger:
         # Pygame's clipline returns empty list if no intersection
         result = cover.rect.clipline(point_a, point_b)
         return len(result) > 0
+
+    def _calculate_movement_direction(self, player, enemies):
+        """Determine if player is moving toward, away, or neutral relative to nearest enemy.
+
+        Returns:
+            'pursuit': Moving toward enemies (aggressive)
+            'retreat': Moving away from enemies (defensive)
+            'neutral': Stationary or no clear direction
+        """
+        if not enemies:
+            return 'neutral'
+
+        # Get player velocity magnitude
+        velocity_mag = math.sqrt(player.velocity[0]**2 + player.velocity[1]**2)
+
+        # If barely moving, it's neutral
+        if velocity_mag < 1.0:  # Less than 1 pixel per frame
+            return 'neutral'
+
+        # Find nearest enemy
+        nearest_enemy = min(enemies, key=lambda e: math.sqrt((e.x - player.x)**2 + (e.y - player.y)**2))
+
+        # Vector from player to nearest enemy
+        to_enemy_x = nearest_enemy.x - player.x
+        to_enemy_y = nearest_enemy.y - player.y
+        to_enemy_mag = math.sqrt(to_enemy_x**2 + to_enemy_y**2)
+
+        if to_enemy_mag < 0.1:
+            return 'neutral'
+
+        # Normalize vectors
+        to_enemy_x /= to_enemy_mag
+        to_enemy_y /= to_enemy_mag
+        vel_x = player.velocity[0] / velocity_mag
+        vel_y = player.velocity[1] / velocity_mag
+
+        # Dot product: positive = moving toward, negative = moving away
+        dot_product = vel_x * to_enemy_x + vel_y * to_enemy_y
+
+        # Threshold for determining direction (0.3 = ~72 degree cone)
+        if dot_product > 0.3:
+            return 'pursuit'
+        elif dot_product < -0.3:
+            return 'retreat'
+        else:
+            return 'neutral'  # Moving perpendicular/sideways
     
     def log_combat_decision(self, decision_type: str, context: Dict):
         """Track key combat decisions and their context."""
@@ -459,7 +518,7 @@ class Enemy:
         if distance < 0.1:
             return
 
-        # Calculate new position based on AI type
+        # Calculate desired movement based on AI type
         move_x = 0
         move_y = 0
 
@@ -480,13 +539,64 @@ class Enemy:
 
         # Check collision with cover objects using circle-rectangle collision
         collision = False
+        blocking_cover = None
         for cover in cover_objects:
             if check_circle_rect_collision(new_x, new_y, self.radius, cover.rect):
                 collision = True
+                blocking_cover = cover
                 break
 
-        # Only move if no collision
-        if not collision:
+        # If collision detected, try to slide around the obstacle
+        if collision:
+            # Try moving only horizontally
+            test_x = self.x + move_x
+            test_y = self.y
+            can_move_x = not check_circle_rect_collision(test_x, test_y, self.radius, blocking_cover.rect)
+
+            # Try moving only vertically
+            test_x = self.x
+            test_y = self.y + move_y
+            can_move_y = not check_circle_rect_collision(test_x, test_y, self.radius, blocking_cover.rect)
+
+            # Apply sliding movement
+            if can_move_x:
+                new_x = self.x + move_x
+                new_y = self.y
+            elif can_move_y:
+                new_x = self.x
+                new_y = self.y + move_y
+            else:
+                # Can't move at all, try perpendicular movement to unstick
+                perpendicular_x = -move_y  # Rotate 90 degrees
+                perpendicular_y = move_x
+
+                test_x = self.x + perpendicular_x
+                test_y = self.y + perpendicular_y
+
+                # Check if perpendicular movement is safe
+                perpendicular_safe = True
+                for cover in cover_objects:
+                    if check_circle_rect_collision(test_x, test_y, self.radius, cover.rect):
+                        perpendicular_safe = False
+                        break
+
+                if perpendicular_safe:
+                    new_x = test_x
+                    new_y = test_y
+                else:
+                    # Completely stuck, don't move
+                    new_x = self.x
+                    new_y = self.y
+
+        # Final collision check with all cover objects
+        final_collision = False
+        for cover in cover_objects:
+            if check_circle_rect_collision(new_x, new_y, self.radius, cover.rect):
+                final_collision = True
+                break
+
+        # Only update position if no collision
+        if not final_collision:
             self.x = new_x
             self.y = new_y
 
