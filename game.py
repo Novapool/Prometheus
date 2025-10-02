@@ -138,23 +138,34 @@ class DataLogger:
         return False
 
     def _check_using_cover(self, player_pos, enemies, cover_objects):
-        """Check if player is actually BEHIND cover relative to enemies."""
+        """More forgiving cover detection."""
         if not enemies:
             return False
-
+        
         for cover in cover_objects:
-            # Check if player is near this cover
+            # More generous distance threshold
             player_to_cover_dist = math.sqrt(
                 (cover.x - player_pos[0])**2 + (cover.y - player_pos[1])**2
             )
-            if player_to_cover_dist > 60:  # Must be close to cover
-                continue
-
-            # Check if ANY enemy has line-of-sight blocked by this cover
-            for enemy in enemies:
-                if self._is_cover_between((enemy.x, enemy.y), player_pos, cover):
-                    return True
-
+            
+            # If player is reasonably close to cover (within 100 pixels)
+            if player_to_cover_dist <= 100:
+                # Check if cover is between player and ANY enemy
+                for enemy in enemies:
+                    enemy_to_player_angle = math.atan2(
+                        player_pos[1] - enemy.y,
+                        player_pos[0] - enemy.x
+                    )
+                    enemy_to_cover_angle = math.atan2(
+                        cover.y - enemy.y,
+                        cover.x - enemy.x
+                    )
+                    
+                    # If angles are similar (within 45 degrees), player is using cover
+                    angle_diff = abs(enemy_to_player_angle - enemy_to_cover_angle)
+                    if angle_diff < 0.785:  # ~45 degrees
+                        return True
+        
         return False
 
     def _is_cover_between(self, point_a, point_b, cover):

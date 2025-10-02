@@ -9,24 +9,30 @@ class GameplayAnalyzer:
     # Classification thresholds
     THRESHOLDS = {
         'avg_enemy_distance': {
-            'close': 120,      # < 120px = close combat
-            'medium': 180,     # 120-180px = medium range
-            'far': 180         # > 180px = long range
+            'close': 150,      # < 150px = close combat (increased from 120)
+            'medium': 250,     # 150-250px = medium range (was 180)
+            'far': 250         # > 250px = long range
         },
         'cover_usage': {
-            'low': 0.2,        # < 20% = rarely uses cover
-            'medium': 0.4,     # 20-40% = moderate cover usage
-            'high': 0.5        # > 50% = heavy cover usage (more lenient)
+            'none': 0.05,      # < 5% = no cover usage
+            'low': 0.15,       # 5-15% = occasional cover
+            'medium': 0.30,    # 15-30% = moderate cover usage
+            'high': 0.30       # > 30% = heavy cover usage
+        },
+        'tactical_positioning': {  # NEW: Combined metric
+            'low': 0.2,        # Not using tactical positions
+            'medium': 0.4,     # Some tactical play
+            'high': 0.4        # Strong tactical positioning
         },
         'shot_accuracy': {
-            'poor': 0.25,      # < 25% accuracy
-            'good': 0.4,       # 25-40% accuracy
-            'excellent': 0.5   # > 50% accuracy
+            'poor': 0.30,      # < 30% accuracy (increased from 25%)
+            'good': 0.45,      # 30-45% accuracy
+            'excellent': 0.60  # > 60% accuracy (more selective)
         },
-        'aggression': {
-            'low': 0.08,       # < 0.08 kills per second
-            'medium': 0.15,    # 0.08-0.15 kills per second
-            'high': 0.15       # > 0.15 kills per second
+        'kill_rate': {  # Renamed from 'aggression'
+            'low': 0.10,       # < 0.10 kills per second
+            'medium': 0.20,    # 0.10-0.20 kills per second
+            'high': 0.20       # > 0.20 kills per second
         },
         'damage_dealt': {
             'low': 100,        # < 100 damage
@@ -34,9 +40,9 @@ class GameplayAnalyzer:
             'high': 200        # > 200 damage
         },
         'survivability_rate': {
-            'excellent': 0.8,  # < 0.8 damage per second (more lenient)
-            'good': 1.5,       # 0.8-1.5 damage per second
-            'poor': 1.5        # > 1.5 damage per second
+            'excellent': 1.0,  # < 1.0 damage per second
+            'good': 2.0,       # 1.0-2.0 damage per second
+            'poor': 2.0        # > 2.0 damage per second
         },
         'mobility_index': {
             'very_low': 20,    # < 20 px/sec
@@ -50,14 +56,20 @@ class GameplayAnalyzer:
             'excellent': 1.5   # > 1.5x
         },
         'retreat_pct': {
-            'low': 0.2,        # < 20% retreat movement
-            'medium': 0.4,     # 20-40% retreat movement
-            'high': 0.4        # > 40% retreat movement (tactical retreat)
+            'low': 0.25,       # < 25% retreat movement
+            'medium': 0.35,    # 25-35% retreat movement
+            'high': 0.35       # > 35% retreat movement (tactical retreat)
         },
         'pursuit_pct': {
-            'low': 0.2,        # < 20% pursuit movement
-            'medium': 0.4,     # 20-40% pursuit movement
-            'high': 0.4        # > 40% pursuit movement (aggressive)
+            'low': 0.25,       # < 25% pursuit movement
+            'medium': 0.35,    # 25-35% pursuit movement
+            'high': 0.35       # > 35% pursuit movement (aggressive)
+        },
+        'engagement_range': {  # NEW: How player chooses to engage
+            'point_blank': 100,
+            'close': 200,
+            'medium': 300,
+            'long': 300
         }
     }
 
@@ -115,6 +127,10 @@ class GameplayAnalyzer:
             **self._extract_temporal_metrics(),
             **self._extract_risk_metrics()
         }
+
+        # Add enhanced tactical metrics
+        self.features.update(self._extract_tactical_metrics())
+
         return self.features
 
     def _extract_combat_metrics(self) -> Dict:
@@ -128,6 +144,9 @@ class GameplayAnalyzer:
         shot_accuracy = shots_hit / shots_fired if shots_fired > 0 else 0
         damage_per_shot = stats['total_damage_dealt'] / shots_fired if shots_fired > 0 else 0
 
+        # Calculate engagement efficiency (kills per engagement)
+        engagement_efficiency = stats['enemies_killed'] / shots_fired if shots_fired > 0 else 0
+
         return {
             'shot_accuracy': shot_accuracy,
             'damage_per_shot': damage_per_shot,
@@ -135,54 +154,80 @@ class GameplayAnalyzer:
             'total_damage_taken': stats['total_damage_taken'],
             'enemies_killed': stats['enemies_killed'],
             'shots_fired': shots_fired,
-            'shots_hit': shots_hit
+            'shots_hit': shots_hit,
+            'engagement_efficiency': engagement_efficiency
         }
 
     def _extract_spatial_metrics(self) -> Dict:
-        """Calculate spatial behavior metrics."""
+        """Enhanced spatial metrics with better cover detection."""
         behavioral_data = self.data.get('behavioral_metrics', [])
 
         if not behavioral_data:
             return {
                 'avg_enemy_distance': 0,
                 'cover_usage_pct': 0,
+                'near_cover_pct': 0,
+                'effective_cover_usage': 0,
                 'mobility_index': 0,
+                'distance_traveled': 0,
                 'retreat_pct': 0,
-                'pursuit_pct': 0
+                'pursuit_pct': 0,
+                'neutral_pct': 0
             }
 
-        # Calculate average enemy distance across all sampled frames
-        distances = [frame['avg_enemy_distance'] for frame in behavioral_data
-                    if frame['avg_enemy_distance'] > 0]
-        avg_distance = sum(distances) / len(distances) if distances else 0
+        # Filter out invalid distance measurements (when no enemies present)
+        valid_distances = []
+        cover_frames = 0
+        near_cover_frames = 0
 
-        # Calculate cover usage percentage
-        near_cover_frames = sum(1 for frame in behavioral_data if frame['near_cover'])
-        cover_usage_pct = near_cover_frames / len(behavioral_data) if behavioral_data else 0
+        for frame in behavioral_data:
+            # Only count distance when enemies are actually present
+            if frame.get('enemies_count', 0) > 0 and frame.get('avg_enemy_distance', 0) > 0:
+                # Cap distance at reasonable screen bounds
+                dist = min(frame['avg_enemy_distance'], 500)  # Max reasonable distance
+                valid_distances.append(dist)
 
-        # Calculate mobility
-        distance_traveled = self.data['player_stats']['distance_traveled']
+            # Count cover usage (both near and using)
+            if frame.get('using_cover', False):
+                cover_frames += 1
+            if frame.get('near_cover', False):
+                near_cover_frames += 1
+
+        # Calculate averages
+        avg_distance = sum(valid_distances) / len(valid_distances) if valid_distances else 0
+
+        # Enhanced cover usage calculation
+        # Consider both "using cover" and "near cover" with different weights
+        cover_usage_pct = cover_frames / len(behavioral_data) if behavioral_data else 0
+        near_cover_pct = near_cover_frames / len(behavioral_data) if behavioral_data else 0
+
+        # Combined cover score (being behind cover is worth more than just being near)
+        effective_cover_usage = (cover_usage_pct * 1.0) + (near_cover_pct * 0.3)
+        effective_cover_usage = min(effective_cover_usage, 1.0)  # Cap at 100%
+
+        # Movement metrics
+        stats = self.data['player_stats']
+        distance_traveled = stats['distance_traveled']
         session_duration = self._calculate_session_duration()
         mobility_index = distance_traveled / session_duration if session_duration > 0 else 0
 
-        # Calculate retreat and pursuit percentages
-        stats = self.data['player_stats']
-        total_movement_frames = stats.get('retreat_frames', 0) + stats.get('pursuit_frames', 0) + stats.get('neutral_frames', 0)
+        # Movement direction percentages
+        total_frames = stats.get('retreat_frames', 0) + stats.get('pursuit_frames', 0) + stats.get('neutral_frames', 0)
 
-        if total_movement_frames > 0:
-            retreat_pct = stats.get('retreat_frames', 0) / total_movement_frames
-            pursuit_pct = stats.get('pursuit_frames', 0) / total_movement_frames
-        else:
-            retreat_pct = 0
-            pursuit_pct = 0
+        retreat_pct = stats.get('retreat_frames', 0) / total_frames if total_frames > 0 else 0
+        pursuit_pct = stats.get('pursuit_frames', 0) / total_frames if total_frames > 0 else 0
+        neutral_pct = stats.get('neutral_frames', 0) / total_frames if total_frames > 0 else 0
 
         return {
             'avg_enemy_distance': avg_distance,
             'cover_usage_pct': cover_usage_pct,
+            'near_cover_pct': near_cover_pct,
+            'effective_cover_usage': effective_cover_usage,
             'mobility_index': mobility_index,
             'distance_traveled': distance_traveled,
             'retreat_pct': retreat_pct,
-            'pursuit_pct': pursuit_pct
+            'pursuit_pct': pursuit_pct,
+            'neutral_pct': neutral_pct
         }
 
     def _extract_temporal_metrics(self) -> Dict:
@@ -190,14 +235,14 @@ class GameplayAnalyzer:
         session_duration = self._calculate_session_duration()
 
         # Calculate rates (per second)
-        aggression_score = (self.data['player_stats']['enemies_killed'] /
-                          session_duration if session_duration > 0 else 0)
+        kill_rate = (self.data['player_stats']['enemies_killed'] /
+                    session_duration if session_duration > 0 else 0)
         shot_frequency = (self.data['player_stats']['shots_fired'] /
                          session_duration if session_duration > 0 else 0)
 
         return {
             'session_duration': session_duration,
-            'aggression_score': aggression_score,
+            'kill_rate': kill_rate,
             'shot_frequency': shot_frequency
         }
 
@@ -210,19 +255,92 @@ class GameplayAnalyzer:
                         session_duration if session_duration > 0 else 0)
 
         # Damage efficiency: higher is better
-        damage_efficiency = (self.data['player_stats']['total_damage_dealt'] /
-                           (self.data['player_stats']['total_damage_taken'] + 1))
+        damage_taken = max(self.data['player_stats']['total_damage_taken'], 1)
+        damage_efficiency = self.data['player_stats']['total_damage_dealt'] / damage_taken
 
         return {
             'survivability': survivability,
             'damage_efficiency': damage_efficiency
         }
 
+    def _extract_tactical_metrics(self) -> Dict:
+        """NEW: Extract tactical positioning and engagement patterns."""
+        import math
+
+        behavioral_data = self.data.get('behavioral_metrics', [])
+        events = self.data.get('events', [])
+
+        if not behavioral_data:
+            return {
+                'tactical_positioning_score': 0,
+                'engagement_range_preference': 'unknown',
+                'defensive_action_ratio': 0
+            }
+
+        # Analyze engagement ranges from shot events
+        shot_distances = []
+        for event in events:
+            if event.get('type') == 'shot_fired' and event.get('data'):
+                data = event['data']
+                if 'position' in data and 'target_position' in data:
+                    pos = data['position']
+                    target = data['target_position']
+                    dist = math.sqrt((target[0] - pos[0])**2 + (target[1] - pos[1])**2)
+                    shot_distances.append(dist)
+
+        # Determine preferred engagement range
+        if shot_distances:
+            avg_shot_dist = sum(shot_distances) / len(shot_distances)
+            if avg_shot_dist < self.THRESHOLDS['engagement_range']['point_blank']:
+                engagement_pref = 'point_blank'
+            elif avg_shot_dist < self.THRESHOLDS['engagement_range']['close']:
+                engagement_pref = 'close'
+            elif avg_shot_dist < self.THRESHOLDS['engagement_range']['medium']:
+                engagement_pref = 'medium'
+            else:
+                engagement_pref = 'long'
+        else:
+            engagement_pref = 'unknown'
+
+        # Calculate tactical positioning score
+        # Combines: cover usage, good positioning (distance), low damage taken
+        tactical_score = 0
+
+        # Factor 1: Cover usage (40% weight)
+        if self.features.get('effective_cover_usage', 0) > self.THRESHOLDS['cover_usage']['medium']:
+            tactical_score += 0.4
+        elif self.features.get('effective_cover_usage', 0) > self.THRESHOLDS['cover_usage']['low']:
+            tactical_score += 0.2
+
+        # Factor 2: Maintaining optimal distance (30% weight)
+        avg_dist = self.features.get('avg_enemy_distance', 0)
+        if 150 < avg_dist < 300:  # Optimal tactical range
+            tactical_score += 0.3
+        elif avg_dist > 300:  # Long range
+            tactical_score += 0.2
+
+        # Factor 3: Low damage taken (30% weight)
+        if self.features.get('survivability', 999) < self.THRESHOLDS['survivability_rate']['excellent']:
+            tactical_score += 0.3
+        elif self.features.get('survivability', 999) < self.THRESHOLDS['survivability_rate']['good']:
+            tactical_score += 0.15
+
+        # Calculate defensive action ratio (reloads and retreats during combat)
+        reload_events = len([e for e in events if e.get('type') == 'reload_start'])
+        total_combat_events = len([e for e in events if e.get('type') in ['shot_fired', 'reload_start']])
+        defensive_action_ratio = reload_events / total_combat_events if total_combat_events > 0 else 0
+
+        return {
+            'tactical_positioning_score': tactical_score,
+            'engagement_range_preference': engagement_pref,
+            'defensive_action_ratio': defensive_action_ratio
+        }
+
     def _calculate_session_duration(self) -> float:
         """Calculate total session duration in seconds."""
         events = self.data.get('events', [])
         if not events:
-            return 0
+            return 0.1  # Minimum duration to avoid division by zero
 
         start_time = self.data['start_time']
         end_time = events[-1]['timestamp']
@@ -231,9 +349,8 @@ class GameplayAnalyzer:
         if duration < 0:
             raise ValueError(f"Invalid session: end_time ({end_time}) < start_time ({start_time})")
 
-        # Return actual duration, even if very short
-        # Callers must handle division by zero explicitly
-        return duration
+        # Return minimum duration to avoid division by zero
+        return max(duration, 0.1)
 
     def classify_behavior(self) -> Dict:
         """Classify player behavior based on extracted features."""
@@ -246,6 +363,11 @@ class GameplayAnalyzer:
             'defensive': self._calculate_defensive_score(),
             'chaotic': self._calculate_chaotic_score()
         }
+
+        # Normalize scores to sum to 1
+        total = sum(scores.values())
+        if total > 0:
+            scores = {k: v/total for k, v in scores.items()}
 
         # Determine primary and secondary classifications
         sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
@@ -263,101 +385,177 @@ class GameplayAnalyzer:
         return self.classification
 
     def _calculate_aggressive_score(self) -> float:
-        """Calculate how aggressive the player is.
+        """Enhanced aggressive scoring.
 
         Aggressive = pursues enemies, close-range combat, high mobility, rushes in.
         """
         score = 0.0
 
-        # Pursuit movement - PRIMARY indicator of aggressive play
+        # Primary indicators (60% total weight)
+        # 1. Pursuit movement (30%)
         if self.features.get('pursuit_pct', 0) > self.THRESHOLDS['pursuit_pct']['high']:
-            score += 0.35  # Main indicator
+            score += 0.30
         elif self.features.get('pursuit_pct', 0) > self.THRESHOLDS['pursuit_pct']['medium']:
-            score += 0.2
+            score += 0.20
+        elif self.features.get('pursuit_pct', 0) > self.THRESHOLDS['pursuit_pct']['low']:
+            score += 0.10
 
-        # Close combat preference
-        if self.features['avg_enemy_distance'] < self.THRESHOLDS['avg_enemy_distance']['close']:
+        # 2. Close combat preference (30%)
+        if self.features.get('avg_enemy_distance', 999) < self.THRESHOLDS['avg_enemy_distance']['close']:
+            score += 0.30
+        elif self.features.get('engagement_range_preference') == 'close':
+            score += 0.20
+        elif self.features.get('engagement_range_preference') == 'point_blank':
             score += 0.25
 
-        # High aggression rate (kills per second)
-        if self.features['aggression_score'] > self.THRESHOLDS['aggression']['high']:
-            score += 0.2
+        # Secondary indicators (40% total weight)
+        # 3. High kill rate (15%)
+        if self.features.get('kill_rate', 0) > self.THRESHOLDS['kill_rate']['high']:
+            score += 0.15
+        elif self.features.get('kill_rate', 0) > self.THRESHOLDS['kill_rate']['medium']:
+            score += 0.08
 
-        # High mobility (rushing around)
-        if self.features['mobility_index'] > self.THRESHOLDS['mobility_index']['medium']:
-            score += 0.1
+        # 4. Low cover usage (10%)
+        if self.features.get('effective_cover_usage', 1) < self.THRESHOLDS['cover_usage']['low']:
+            score += 0.10
+        elif self.features.get('effective_cover_usage', 1) < self.THRESHOLDS['cover_usage']['medium']:
+            score += 0.05
 
-        # Low cover usage (optional - rushes in the open)
-        if self.features['cover_usage_pct'] < self.THRESHOLDS['cover_usage']['low']:
-            score += 0.1
+        # 5. High mobility (10%)
+        if self.features.get('mobility_index', 0) > 150:
+            score += 0.10
+        elif self.features.get('mobility_index', 0) > 100:
+            score += 0.05
+
+        # 6. Low tactical positioning (5%)
+        if self.features.get('tactical_positioning_score', 1) < self.THRESHOLDS['tactical_positioning']['low']:
+            score += 0.05
 
         return min(score, 1.0)
 
     def _calculate_defensive_score(self) -> float:
-        """Calculate how defensive/cautious the player is.
+        """Enhanced defensive scoring with proper cover and tactical weighting.
 
         Defensive = tactical retreat, maintains distance, uses cover, prioritizes survival.
         Movement is AWAY from enemies to reposition, not toward them.
         """
         score = 0.0
 
-        # Retreat movement - PRIMARY indicator of defensive play
-        if self.features.get('retreat_pct', 0) > self.THRESHOLDS['retreat_pct']['high']:
-            score += 0.35  # Main indicator: retreating to reposition
-        elif self.features.get('retreat_pct', 0) > self.THRESHOLDS['retreat_pct']['medium']:
-            score += 0.2
-
-        # Maintains distance from enemies
-        if self.features['avg_enemy_distance'] > self.THRESHOLDS['avg_enemy_distance']['far']:
+        # Primary indicators (70% total weight)
+        # 1. Tactical positioning (25%) - NEW PRIMARY INDICATOR
+        if self.features.get('tactical_positioning_score', 0) > self.THRESHOLDS['tactical_positioning']['high']:
             score += 0.25
-        elif self.features['avg_enemy_distance'] > self.THRESHOLDS['avg_enemy_distance']['medium']:
+        elif self.features.get('tactical_positioning_score', 0) > self.THRESHOLDS['tactical_positioning']['medium']:
             score += 0.15
+        elif self.features.get('tactical_positioning_score', 0) > self.THRESHOLDS['tactical_positioning']['low']:
+            score += 0.08
 
-        # Low damage taken (good survivability)
-        if self.features['survivability'] < self.THRESHOLDS['survivability_rate']['excellent']:
-            score += 0.2
+        # 2. Retreat movement (20%)
+        if self.features.get('retreat_pct', 0) > self.THRESHOLDS['retreat_pct']['high']:
+            score += 0.20
+        elif self.features.get('retreat_pct', 0) > self.THRESHOLDS['retreat_pct']['medium']:
+            score += 0.12
+        elif self.features.get('retreat_pct', 0) > self.THRESHOLDS['retreat_pct']['low']:
+            score += 0.06
 
-        # Cover usage when available
-        if self.features['cover_usage_pct'] > self.THRESHOLDS['cover_usage']['medium']:
+        # 3. Distance maintenance (15%)
+        if self.features.get('avg_enemy_distance', 0) > self.THRESHOLDS['avg_enemy_distance']['far']:
             score += 0.15
+        elif self.features.get('avg_enemy_distance', 0) > self.THRESHOLDS['avg_enemy_distance']['medium']:
+            score += 0.10
+        elif self.features.get('engagement_range_preference') in ['long', 'medium']:
+            score += 0.08
 
-        # Good accuracy (patient, deliberate shots from safe positions)
-        if self.features['shot_accuracy'] > self.THRESHOLDS['shot_accuracy']['good']:
+        # 4. Cover usage (10%)
+        if self.features.get('effective_cover_usage', 0) > self.THRESHOLDS['cover_usage']['high']:
+            score += 0.10
+        elif self.features.get('effective_cover_usage', 0) > self.THRESHOLDS['cover_usage']['medium']:
+            score += 0.07
+        elif self.features.get('effective_cover_usage', 0) > self.THRESHOLDS['cover_usage']['low']:
+            score += 0.04
+
+        # Secondary indicators (30% total weight)
+        # 5. Good survivability (10%)
+        if self.features.get('survivability', 999) < self.THRESHOLDS['survivability_rate']['excellent']:
+            score += 0.10
+        elif self.features.get('survivability', 999) < self.THRESHOLDS['survivability_rate']['good']:
             score += 0.05
+
+        # 6. High accuracy (10%) - Patient, aimed shots
+        if self.features.get('shot_accuracy', 0) > self.THRESHOLDS['shot_accuracy']['excellent']:
+            score += 0.10
+        elif self.features.get('shot_accuracy', 0) > self.THRESHOLDS['shot_accuracy']['good']:
+            score += 0.06
+
+        # 7. Good damage efficiency (5%)
+        if self.features.get('damage_efficiency', 0) > 2.0:
+            score += 0.05
+        elif self.features.get('damage_efficiency', 0) > 1.5:
+            score += 0.03
+
+        # 8. Defensive actions (5%)
+        if self.features.get('defensive_action_ratio', 0) > 0.1:
+            score += 0.05
+        elif self.features.get('defensive_action_ratio', 0) > 0.05:
+            score += 0.02
 
         return min(score, 1.0)
 
 
     def _calculate_chaotic_score(self) -> float:
-        """Calculate chaotic/panicked playstyle.
+        """Enhanced chaotic scoring.
 
         Chaotic = no clear strategy, inconsistent movement, poor accuracy, medium range,
         neither retreating strategically nor pursuing aggressively.
         """
         score = 0.0
 
-        # Poor accuracy - key indicator of panic/chaos
-        if self.features['shot_accuracy'] < self.THRESHOLDS['shot_accuracy']['poor']:
-            score += 0.3
+        # Primary indicators (60% total weight)
+        # 1. Poor accuracy (20%)
+        if self.features.get('shot_accuracy', 1) < self.THRESHOLDS['shot_accuracy']['poor']:
+            score += 0.20
+        elif self.features.get('shot_accuracy', 1) < self.THRESHOLDS['shot_accuracy']['good']:
+            score += 0.10
 
-        # High damage taken (poor survivability)
-        if self.features['survivability'] > self.THRESHOLDS['survivability_rate']['poor']:
-            score += 0.25
+        # 2. Poor survivability (20%)
+        if self.features.get('survivability', 0) > self.THRESHOLDS['survivability_rate']['poor']:
+            score += 0.20
+        elif self.features.get('survivability', 0) > self.THRESHOLDS['survivability_rate']['good']:
+            score += 0.10
 
-        # Poor damage efficiency
-        if self.features['damage_efficiency'] < self.THRESHOLDS['damage_efficiency']['poor']:
-            score += 0.2
-
-        # No clear movement pattern - neither retreating nor pursuing consistently
+        # 3. No clear movement pattern (20%)
         retreat = self.features.get('retreat_pct', 0)
         pursuit = self.features.get('pursuit_pct', 0)
         if retreat < self.THRESHOLDS['retreat_pct']['medium'] and pursuit < self.THRESHOLDS['pursuit_pct']['medium']:
-            score += 0.15  # Erratic/unfocused movement
+            score += 0.20
+        elif retreat < self.THRESHOLDS['retreat_pct']['high'] and pursuit < self.THRESHOLDS['pursuit_pct']['high']:
+            score += 0.10
 
-        # Medium distance combat (not committing to either close or far)
-        if (self.features['avg_enemy_distance'] >= self.THRESHOLDS['avg_enemy_distance']['close'] and
-            self.features['avg_enemy_distance'] <= self.THRESHOLDS['avg_enemy_distance']['far']):
-            score += 0.1
+        # Secondary indicators (40% total weight)
+        # 4. Poor damage efficiency (15%)
+        if self.features.get('damage_efficiency', 999) < 1.0:
+            score += 0.15
+        elif self.features.get('damage_efficiency', 999) < 1.5:
+            score += 0.08
+
+        # 5. Low kill rate (10%)
+        if self.features.get('kill_rate', 1) < self.THRESHOLDS['kill_rate']['low']:
+            score += 0.10
+        elif self.features.get('kill_rate', 1) < self.THRESHOLDS['kill_rate']['medium']:
+            score += 0.05
+
+        # 6. Inconsistent positioning (10%)
+        # Medium distance, low tactical score
+        if (self.features.get('avg_enemy_distance', 0) > self.THRESHOLDS['avg_enemy_distance']['close'] and
+            self.features.get('avg_enemy_distance', 0) < self.THRESHOLDS['avg_enemy_distance']['far']):
+            score += 0.05
+
+        if self.features.get('tactical_positioning_score', 1) < self.THRESHOLDS['tactical_positioning']['medium']:
+            score += 0.05
+
+        # 7. Erratic engagement (5%)
+        if self.features.get('engagement_range_preference') == 'unknown':
+            score += 0.05
 
         return min(score, 1.0)
 
@@ -452,20 +650,27 @@ Combat Performance:
   - Damage Dealt:         {self.features['total_damage_dealt']:.0f}
   - Damage Taken:         {self.features['total_damage_taken']:.0f}
   - Damage Efficiency:    {self.features['damage_efficiency']:.2f}x
+  - Engagement Efficiency: {self.features.get('engagement_efficiency', 0):.3f} (kills/shot)
 
 Spatial Behavior:
   - Avg Enemy Distance:   {self.features['avg_enemy_distance']:.1f} pixels
   - Cover Usage:          {self.features['cover_usage_pct']*100:.1f}%
+  - Effective Cover Usage: {self.features.get('effective_cover_usage', 0)*100:.1f}%
   - Distance Traveled:    {self.features['distance_traveled']:.1f} pixels
   - Mobility Index:       {self.features['mobility_index']:.1f} px/sec
 
 Movement Patterns:
   - Retreat Movement:     {self.features.get('retreat_pct', 0)*100:.1f}% (moving away from enemies)
   - Pursuit Movement:     {self.features.get('pursuit_pct', 0)*100:.1f}% (moving toward enemies)
-  - Neutral Movement:     {(1 - self.features.get('retreat_pct', 0) - self.features.get('pursuit_pct', 0))*100:.1f}% (sideways/stationary)
+  - Neutral Movement:     {self.features.get('neutral_pct', 0)*100:.1f}% (sideways/stationary)
+
+Tactical Metrics:
+  - Tactical Positioning:  {self.features.get('tactical_positioning_score', 0)*100:.1f}%
+  - Engagement Range:      {self.features.get('engagement_range_preference', 'unknown')}
+  - Defensive Actions:     {self.features.get('defensive_action_ratio', 0)*100:.1f}%
 
 Aggression Metrics:
-  - Kills per Second:     {self.features['aggression_score']:.3f}
+  - Kill Rate:            {self.features.get('kill_rate', 0):.3f} kills/sec
   - Shots per Second:     {self.features['shot_frequency']:.2f}
   - Survivability:        {self.features['survivability']:.2f} dmg/sec
 
@@ -491,8 +696,15 @@ Difficulty Modifier: {adaptations['difficulty_modifier']}x
 """
         return report
 
-    def save_classification(self, output_filepath: str):
-        """Save classification results to JSON file."""
+    def save_classification(self, output_filepath: str = None, output_dir: str = None):
+        """Save classification results to JSON file.
+
+        Args:
+            output_filepath: Full path to output file (optional)
+            output_dir: Directory to save to, will auto-generate filename (optional)
+        """
+        import os
+
         if not self.classification:
             self.classify_behavior()
 
@@ -507,10 +719,23 @@ Difficulty Modifier: {adaptations['difficulty_modifier']}x
             'adaptations': adaptations
         }
 
-        with open(output_filepath, 'w') as f:
+        # Determine output path
+        if output_filepath:
+            final_path = output_filepath
+        elif output_dir:
+            # Auto-generate filename based on playstyle
+            playstyle = self.data.get('playstyle_label', 'unknown')
+            playstyle_dir = os.path.join(output_dir, playstyle)
+            os.makedirs(playstyle_dir, exist_ok=True)
+            final_path = os.path.join(playstyle_dir, f"analysis_{self.data['session_id']}.json")
+        else:
+            # Default fallback
+            final_path = f"analysis_{self.data['session_id']}.json"
+
+        with open(final_path, 'w') as f:
             json.dump(output_data, f, indent=2)
 
-        print(f"Classification saved to {output_filepath}")
+        print(f"Classification saved to {final_path}")
 
 
 def analyze_directory(directory_path: str):
@@ -536,9 +761,9 @@ def analyze_directory(directory_path: str):
     # Extract expected playstyle from directory path
     expected_playstyle = os.path.basename(directory_path)
 
-    # Create output directory
-    output_dir = os.path.join("analysis_results", expected_playstyle)
-    os.makedirs(output_dir, exist_ok=True)
+    # Output goes to analysis_results/
+    output_base_dir = "analysis_results"
+    os.makedirs(output_base_dir, exist_ok=True)
 
     for filepath in json_files:
         try:
@@ -549,9 +774,8 @@ def analyze_directory(directory_path: str):
             analyzer.extract_features()
             analyzer.classify_behavior()
 
-            # Save individual analysis
-            output_file = os.path.join(output_dir, f"analysis_{analyzer.data['session_id']}.json")
-            analyzer.save_classification(output_file)
+            # Save individual analysis (will auto-organize by playstyle)
+            analyzer.save_classification(output_dir=output_base_dir)
 
             # Track results
             label = analyzer.data.get('playstyle_label')
@@ -606,8 +830,11 @@ def analyze_directory(directory_path: str):
         pct = count / len(results) * 100
         print(f"  {style}: {count} ({pct:.1f}%)")
 
-    # Save aggregate report
-    aggregate_file = os.path.join(output_dir, "aggregate_report.txt")
+    # Save aggregate report in the expected playstyle directory
+    aggregate_dir = os.path.join(output_base_dir, expected_playstyle)
+    os.makedirs(aggregate_dir, exist_ok=True)
+    aggregate_file = os.path.join(aggregate_dir, "aggregate_report.txt")
+
     with open(aggregate_file, 'w') as f:
         f.write("="*70 + "\n")
         f.write("AGGREGATE ANALYSIS REPORT\n")
@@ -635,6 +862,48 @@ def analyze_directory(directory_path: str):
     print(f"\nAggregate report saved to {aggregate_file}")
 
 
+def analyze_all_data(base_dir: str = "gameplay_data"):
+    """Analyze all gameplay data from all playstyle subdirectories."""
+    import os
+    from collections import Counter
+
+    # Find all subdirectories in base_dir
+    if not os.path.isdir(base_dir):
+        print(f"Error: {base_dir} is not a valid directory")
+        return
+
+    subdirs = [d for d in os.listdir(base_dir)
+               if os.path.isdir(os.path.join(base_dir, d))]
+
+    if not subdirs:
+        print(f"No subdirectories found in {base_dir}")
+        return
+
+    print(f"\nProcessing all data from {base_dir}/")
+    print(f"Found playstyle directories: {', '.join(subdirs)}")
+    print("="*70)
+
+    all_results = []
+
+    # Process each subdirectory
+    for subdir in sorted(subdirs):
+        subdir_path = os.path.join(base_dir, subdir)
+        print(f"\n{'='*70}")
+        print(f"Processing {subdir_path}")
+        print(f"{'='*70}")
+
+        # Analyze this directory
+        analyze_directory(subdir_path)
+
+    print(f"\n{'='*70}")
+    print("ALL DATA PROCESSED SUCCESSFULLY")
+    print(f"{'='*70}")
+    print(f"\nResults organized in analysis_results/ by playstyle")
+    print(f"Each playstyle directory contains:")
+    print(f"  - Individual analysis JSON files")
+    print(f"  - aggregate_report.txt")
+
+
 def main():
     """Main entry point for standalone usage."""
     import sys
@@ -642,15 +911,27 @@ def main():
 
     if len(sys.argv) < 2:
         print("Usage:")
-        print("  Single file: python analyze_player_behavior.py <gameplay_data.json>")
-        print("  Directory:   python analyze_player_behavior.py --dir <directory_path>")
+        print("  Single file:  python analyze_player_behavior.py <gameplay_data.json>")
+        print("  Directory:    python analyze_player_behavior.py --dir <directory_path>")
+        print("  All data:     python analyze_player_behavior.py --all [base_directory]")
         print("\nExamples:")
         print("  python analyze_player_behavior.py gameplay_data_20250922_154913.json")
         print("  python analyze_player_behavior.py --dir gameplay_data/defensive")
+        print("  python analyze_player_behavior.py --all")
+        print("  python analyze_player_behavior.py --all gameplay_data")
         sys.exit(1)
 
+    # Check for --all mode
+    if sys.argv[1] == "--all":
+        base_dir = sys.argv[2] if len(sys.argv) > 2 else "gameplay_data"
+        try:
+            analyze_all_data(base_dir)
+        except Exception as e:
+            print(f"Error analyzing all data: {e}")
+            sys.exit(1)
+
     # Check for directory mode
-    if sys.argv[1] == "--dir":
+    elif sys.argv[1] == "--dir":
         if len(sys.argv) < 3:
             print("Error: --dir requires a directory path")
             sys.exit(1)
@@ -681,16 +962,8 @@ def main():
             report = analyzer.generate_report()
             print(report)
 
-            # Save classification to file
-            label = analyzer.data.get('playstyle_label')
-            if label:
-                output_dir = os.path.join("analysis_results", label)
-                os.makedirs(output_dir, exist_ok=True)
-                output_file = os.path.join(output_dir, f"analysis_{analyzer.data['session_id']}.json")
-            else:
-                output_file = f"analysis_{analyzer.data['session_id']}.json"
-
-            analyzer.save_classification(output_file)
+            # Save classification to file (auto-organize by playstyle)
+            analyzer.save_classification(output_dir="analysis_results")
 
         except Exception as e:
             print(f"Error analyzing gameplay data: {e}")
