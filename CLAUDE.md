@@ -1,182 +1,368 @@
-# CLAUDE.md
+# CLAUDE.md - AI Assistant Context
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## What This Project Actually Is
 
-## Project Goal
+**Persistent Player Modeling System**: A universal AI framework that learns player combat behavior over many sessions and adapts enemy tactics based on accumulated knowledge.
 
-**Universal Adaptive Combat AI Framework**: Create a plug-and-play AI system that can be integrated into any combat-oriented game to make enemies adapt to individual player behavior patterns in real-time.
+### Critical Understanding: NOT Live Inference
 
-### Core Concept
-The framework will act as a "player behavior classifier" + "strategic response system" that:
-1. Receives standardized player behavior data from any game
-2. Classifies player patterns (aggressive vs defensive, risk-taking vs conservative, spatial preferences, etc.)
-3. Returns high-level strategic recommendations (not specific actions)
-4. Learns universal combat psychology patterns, not game-specific mechanics
+❌ **This is NOT**:
+- Real-time reactive AI that changes behavior mid-match
+- Live inference system during gameplay
+- Game-specific adaptive AI
+- Immediate pattern recognition
 
-### Vision
-Enable game developers to integrate adaptive AI without custom programming by providing a universal abstraction layer that works across different games.
+✅ **This IS**:
+- Netflix-style recommendation system for enemy behavior
+- Long-term player profiling across sessions
+- Hierarchical classification that deepens over time (Tier 1 → 2 → 3 → 4)
+- Universal abstraction layer that works across different combat games
+- Between-session adaptation, not within-match changes
 
-## Current Project Status: Phase 1 (Proof of Concept)
+**Key Analogy**: Doctor reviewing entire medical history over years vs. 5-minute diagnosis
 
-The current codebase is the Phase 1 implementation - a simple combat game built specifically for data collection and initial behavior classification testing.
+---
 
-**Purpose of current implementation**:
-- Collect diverse gameplay data from different player styles
-- Test basic player behavior classification (aggressive, defensive, etc.)
-- Validate that AI can adapt to player patterns
-- Generate training data for machine learning models
+## Current Phase: Phase 1 (Proof of Concept)
 
-This is **NOT** the final product - it's a testing ground for the universal framework that will be built in later phases.
+### What Phase 1 Is For
+- **Primary Goal**: Collect quality gameplay data and prove basic classification works
+- **Secondary Goal**: Build foundation for universal abstraction layer
+- **NOT the goal**: Build the final product or perfect the game
 
-## Development Phases
+### Current Implementation: `game.py`
+**Purpose**: Data collection training ground, NOT the final product
 
-### Phase 1: Proof of Concept (Months 1-4) ← CURRENT PHASE
-- Build simple combat game for testing (✓ `game.py`)
-- Implement data collection system (✓ `DataLogger`)
-- Create basic player behavior classification (3-4 categories)
-- Prove AI can adapt to different player styles
-- **Success criteria**: AI demonstrably changes behavior based on player patterns
+The game is intentionally simple:
+- Top-down shooter with wave-based survival
+- Basic enemy types (aggressive "basic", ranged "sniper")
+- Comprehensive telemetry logging via `DataLogger`
+- 5-10 minute sessions for rapid data collection
 
-### Phase 2: Framework Development (Months 5-8)
-- Design standardized input/output formats for any game
-- Create Universal Game State Abstraction Layer
-- Expand classification categories (10+ behavior types)
-- Build Game Integration API
-- Test with 2-3 different simple games
-- **Success criteria**: Same AI works across multiple different game types
+**Remember**: Game features should serve data collection, not vice versa
 
-### Phase 3: Real-World Integration (Months 9-12)
-- Build integration tools for major game engines (Unity, Unreal, Godot)
-- Optimize for real-time performance (sub-millisecond response times)
-- Test with existing games/demos
-- Refine classification accuracy
-- **Success criteria**: Seamless integration with professional game engines
+### What We're Building Toward (Phase 1)
+1. LSTM session encoder (compress each match → 256D embedding)
+2. Tier 1 classifier using Random Forest (5 categories: Aggressive, Defensive, Tactical, Mobile, Chaotic)
+3. Dataset: 5,000+ sessions from 100+ players
+4. Basic enemy adaptation based on Tier 1 classification
+5. **Success**: 70%+ accuracy on broad playstyle classification
 
-### Phase 4: Advanced Features (Months 13-18)
-- Multi-player adaptation (enemies learn from multiple players)
-- Long-term player modeling (remembers players across sessions)
-- Advanced strategic reasoning
-- Performance analytics and debugging tools
-- **Success criteria**: Production-ready system for commercial games
+---
 
-## Core Components (To Be Built)
+## Technical Architecture (Simplified)
 
-1. **Player Behavior Classification System**: ML models that analyze player actions and categorize behavioral patterns
-2. **Universal Game State Abstraction Layer**: Converts game-specific data into standardized format
-3. **Strategic Response Engine**: Takes player classifications and generates counter-strategies
-4. **Game Integration API**: Standardized interface for games to communicate with the AI
+### The Flow
+```
+Session Data → LSTM Encoder → Session Embedding (256D)
+                                      ↓
+Player History (N sessions) → Transformer → Player Profile (768D)
+                                      ↓
+              Hierarchical Classifiers → Enemy Adaptation Params
+```
 
-## Current Implementation Overview
+### Phase-by-Phase Model Evolution
 
-This is a Python-based adaptive combat AI game with data collection capabilities. It's a top-down shooter built with Pygame where the player fights waves of enemies while the system logs gameplay data for AI training purposes.
+**Phase 1** (Current):
+- Manual feature engineering
+- LSTM for session encoding
+- Random Forest for Tier 1 classification
+- Rule-based adaptation
 
-## Running the Game
+**Phase 2** (Months 4-6):
+- Transformer for cross-session learning
+- Tier 2 hierarchical classification
+- Persistent storage (PostgreSQL + vector DB)
 
+**Phase 3+** (Later):
+- Tier 3 specializations
+- Micro-preference detection
+- Transfer learning to other games
+
+### Universal Abstraction Principle
+
+All metrics must be **normalized and game-agnostic**:
+- "Engagement distance = 85th percentile" (not "150 pixels")
+- "Pursuit ratio = 25%" (% time moving toward enemies)
+- "Cover dependency = 60%" (% combat time behind cover)
+
+**Why**: These translate across FPS, top-down, RPG, strategy games
+
+---
+
+## Data Requirements (Phase 1)
+
+### Core Data Streams
+Collect every 10-20 frames:
+
+**Spatial**:
+- Player position (x, y)
+- Enemy positions (all active)
+- Facing direction / aim vector
+- Movement velocity
+
+**Combat**:
+- Shot fired (position, angle, target, hit/miss)
+- Damage dealt/taken (amount, source)
+- Reload events (timing, ammo state)
+- Enemy kills (location, time, weapon type)
+
+**Tactical**:
+- Cover usage (in/out, duration)
+- Health/ammo pickups (timing, state when collected)
+- Zone control (time in map areas)
+
+**Outcome**:
+- Match duration, score, win/loss
+- Session metadata (timestamp, player ID)
+
+### Derived Features (Compute Post-Match)
+- Average engagement distance
+- Kill/Death ratio
+- Damage per second
+- Accuracy percentage
+- Time in combat vs exploration
+- Aggression curve over match
+- Movement patterns (static vs mobile)
+
+---
+
+## Current Implementation Details
+
+### File: `game.py`
+
+**DataLogger class** (`game.py:27-93`):
+- Central to project purpose
+- `log_event()`: Discrete actions (shots, damage, kills, waves)
+- `log_frame_data()`: Continuous metrics (sampled every 10 frames)
+- Output: JSON file `gameplay_data_{timestamp}.json`
+
+**Game Loop** (`game.py:462-495`):
+- 60 FPS, delta time-based updates
+- Frame sampling for behavioral metrics
+- Session boundaries: Game start → player death/wave 10
+
+**Entity System**:
+- **Player** (`game.py:116-205`): WASD movement, mouse aim/shoot
+- **Enemy** (`game.py:207-275`): Two AI types (basic=aggressive, sniper=distance)
+- **Bullet** (`game.py:95-114`): Owner tracking for collision logic
+
+**Wave System** (`game.py:402-407`):
+- Progressive difficulty: 3 → 6 enemies max
+- Natural session boundaries for data collection
+- Ends at wave 10 or player death
+
+### When Modifying Game Mechanics
+
+**Always ensure**:
+1. New actions logged via `data_logger.log_event()`
+2. Relevant stats updated in `player_stats` dictionary
+3. Frame-level metrics captured if spatially/temporally relevant
+4. Focus on data quality, not game polish
+
+**Pattern**: See `game.py:157-176` (player shooting) for logging integration example
+
+---
+
+## Development Priorities (Phase 1)
+
+### Focus On
+1. **Data quality**: Clean, consistent, comprehensive logging
+2. **Archetype separation**: Game mechanics that reveal distinct playstyles
+3. **Session diversity**: Encourage different player behaviors
+4. **Volume**: Get to 5,000+ sessions quickly
+
+### Avoid
+1. ❌ Over-engineering the game (graphics, UI, features)
+2. ❌ Adding mechanics that don't contribute to classification
+3. ❌ Optimizing for fun over data collection
+4. ❌ Building live inference features (not the goal!)
+5. ❌ Game-specific features that won't generalize
+
+### Good vs Bad Features
+
+**Good** (supports universal classification):
+- Multiple weapon types (reveals range preference)
+- Cover system (reveals defensive tendencies)
+- Wave pressure (reveals stress response)
+- Open arena (reveals spatial patterns)
+
+**Bad** (too game-specific):
+- Complex upgrade trees
+- Story/narrative elements
+- Intricate UI systems
+- Game-specific mechanics (grappling, vehicles, etc.)
+
+---
+
+## Hierarchical Classification Tree
+
+### Tier 1: Broad Playstyle (5-10 matches)
+- **Aggressive**: Close-range, pursuit-focused
+- **Defensive**: Long-range, retreat-focused
+- **Tactical**: Cover-heavy, positioning-focused
+- **Mobile**: Hit-and-run, high movement
+- **Chaotic**: Inconsistent, still learning
+
+### Tier 2: Combat Archetype (15-30 matches)
+```
+Aggressive → Berserker, Flanker, Rusher
+Defensive → Sniper, Skirmisher, Fortress
+Tactical → Ambusher, Controller, Adaptive
+Mobile → Ghost, Harasser, Scout
+```
+
+### Tier 3: Specialization (50+ matches)
+```
+Sniper → Patient Marksman, Suppressor, Relocator
+Berserker → Tank Build, Glass Cannon, Momentum Fighter
+```
+
+### Tier 4: Micro-preferences (100+ matches)
+- Exact engagement distances
+- Reload timing patterns
+- Target selection logic
+- Resource management style
+- Stress responses
+
+**Progressive refinement**: New players get Tier 1 fast, veterans get fine-grained personalization
+
+---
+
+## Enemy Adaptation Logic
+
+### Phase 1: Simple Rule-Based
+
+```python
+if Tier_1 == "Aggressive":
+    spawn_distance = "far"        # Make them work for it
+    enemy_retreat = True          # Kite them
+    use_cover = "heavy"
+
+elif Tier_1 == "Defensive":
+    spawn_distance = "close"      # Force out of comfort
+    enemy_movement = "erratic"    # Hard to track
+    flanking_freq = "high"        # Attack from sides
+```
+
+### Phase 2+: Parameter-Based
+- Continuous values instead of binary rules
+- Confidence-weighted (low confidence → generic behavior)
+- Difficulty scaling based on win rate
+
+### Phase 3+: Meta-Counters
+- Counter the player's counter-strategies
+- Occasional surprises (break patterns)
+- Temporal awareness (fatigue, time since last session)
+
+---
+
+## Success Metrics (Phase 1)
+
+### Technical
+- **Tier 1 accuracy**: 70%+ after 5 matches
+- **Session encoding**: <100ms per match
+- **Data collection**: 5,000+ clean sessions
+- **Embedding quality**: Clusters visually align with archetypes
+
+### User Experience
+- **Adaptation detection**: 60%+ players notice behavior changes
+- **Archetype identification**: Players can identify their style
+- **Engagement**: Session length stable/increasing over time
+
+### Data Quality
+- No missing/corrupt sessions
+- Balanced archetype distribution (avoid all aggressive players)
+- Clear behavioral separation in feature space
+
+---
+
+## Key Decisions & Constraints
+
+### When to Add ML Models
+- **Now**: Session encoder (LSTM) + Tier 1 classifier (RF)
+- **Phase 2**: Transformer for player profiles
+- **Phase 3+**: Advanced classifiers, transfer learning
+
+### When to Expand Game Features
+- **Only if**: It reveals new behavioral patterns for classification
+- **Ask**: "Does this help distinguish Aggressive vs Defensive?"
+- **Avoid**: Features for fun/polish that don't contribute to data
+
+### When to Optimize Performance
+- **Phase 1**: Don't. Data collection is the priority
+- **Phase 2-3**: Once models are built
+- **Phase 4**: Real-time optimization (<50ms inference)
+
+### When to Think About Other Games
+- **Not yet**: Stay focused on training game
+- **Phase 4**: After Tier 3 classification works well
+- **Goal**: Validate transfer learning, not build integrations
+
+---
+
+## How to Help the Developer
+
+### When They Ask About Features
+1. Check if it serves data collection / classification
+2. Remind them: game is a tool, not the product
+3. Suggest simplest implementation that gets the data
+
+### When They Get Stuck
+1. Refocus on Phase 1 goals: data + Tier 1 classification
+2. Check if they're over-engineering
+3. Validate current implementation meets data needs
+
+### When They Want to Jump Ahead
+1. Acknowledge the vision (it's exciting!)
+2. Ground in current phase requirements
+3. Emphasize: prove basics work first
+
+### When Debugging
+1. Prioritize data quality issues
+2. Check logging integration
+3. Ensure session boundaries are clean
+4. Validate feature engineering makes sense
+
+---
+
+## Quick Reference
+
+### Running the Game
 ```bash
 python game.py
 ```
 
-The game runs immediately without additional setup steps. Requires dependencies from `requirements.txt` (currently just pygame).
+### Controls
+- WASD/Arrows: Move
+- Mouse: Aim
+- Left Click: Shoot
+- ESC: Quit and save data
 
-## Core Architecture
+### Data Location
+`gameplay_data_{timestamp}.json`
 
-### Main Game Loop (Game class)
-- Entry point: `game.py:497` (`if __name__ == "__main__"`)
-- Game loop: `game.py:462-495` (`Game.run()`)
-- Frame rate: 60 FPS constant
-- Delta time-based updates for consistent physics
-
-### Entity System
-All entities (Player, Enemy, Bullet, CoverObject) follow the same pattern:
-- Constructor sets initial state and properties
-- `update(dt, ...)` method for game logic
-- `draw(screen)` method for rendering
-
-**Player** (`game.py:116-205`):
-- Movement: WASD or arrow keys, normalized diagonal movement
-- Shooting: Mouse aim + left click, cooldown-based firing
-- Screen boundary clamping
-
-**Enemy** (`game.py:207-275`):
-- Two AI types: "basic" (aggressive) and "sniper" (maintains distance)
-- AI behavior in `update()`: distance-based movement decisions
-- Autonomous shooting with cooldowns
-
-**Bullet** (`game.py:95-114`):
-- Owner tracking ("player" vs "enemy") for collision logic
-- Fixed speed, angle-based trajectory
-- Color-coded by owner (yellow=player, red=enemy)
-
-### Data Collection System (DataLogger class)
-
-The DataLogger (`game.py:27-93`) is central to this project's purpose - collecting training data for AI:
-
-**Event logging**: Discrete events (shots, damage, deaths, waves) via `log_event()`
-- Shot fired with position, angle, target, ammo
-- Damage taken/dealt with health and position
-- Enemy kills with type and location
-- Wave completions
-
-**Frame-by-frame metrics** (`log_frame_data()`): Sampled every 10 frames
-- Player position
-- Enemy count and distances (average + nearest)
-- Proximity to cover
-- Player health
-
-**Session data structure**:
-```python
-{
-  'session_id': timestamp,
-  'events': [],                    # Discrete events
-  'behavioral_metrics': [],         # Frame samples
-  'player_stats': {                 # Aggregate statistics
-    'total_damage_dealt': 0,
-    'total_damage_taken': 0,
-    'shots_fired': 0,
-    'shots_hit': 0,
-    'enemies_killed': 0,
-    'distance_traveled': 0
-  }
-}
-```
-
-**Data output**: JSON file saved on game exit with filename `gameplay_data_{timestamp}.json`
-
-### Collision System
-
-Located in `Game.handle_collisions()` (`game.py:340-368`):
-- Circle-to-circle collision detection (radius-based)
-- Three collision types: bullet-enemy, bullet-player, bullet-cover
-- Damage application and stat tracking on collision
-- Bullet removal after collision
-
-### Wave System
-
-Progressive difficulty (`game.py:402-407`):
-- Starts at wave 1 with 3 enemies
-- Increases to max 6 enemies per wave
-- Wave advances when all enemies defeated
-- Game ends at wave 10 or player death
-
-## Key Constants
-
-- Screen: 1024x768 pixels
-- Player speed: 200 units/second
-- Player health: 100, bullet damage from enemies: 15
-- Enemy health: 30, bullet damage to enemies: 10
+### Key Constants
+- Screen: 1024x768
+- Player speed: 200 units/sec, health: 100
+- Enemy health: 30, damage to player: 15
 - Bullet speeds: Player=500, Enemy=300
 
-## Controls
+### Important Code Locations
+- DataLogger: `game.py:27-93`
+- Player: `game.py:116-205`
+- Enemy AI: `game.py:207-275` (see `update()` method)
+- Collision handling: `game.py:340-368`
+- Wave system: `game.py:402-407`
 
-- **WASD/Arrow keys**: Movement
-- **Mouse**: Aim direction
-- **Left click**: Shoot
-- **ESC**: Quit and save data
+---
 
-## Data Logging Integration
+## Remember
 
-When modifying gameplay mechanics, ensure proper logging:
-1. Call `data_logger.log_event()` for significant actions
-2. Update `player_stats` dictionary for trackable metrics
-3. Pass `data_logger` to methods that trigger loggable events
-4. Example pattern: `game.py:157-176` (player shooting)
+**Core Philosophy**: Persistent learning beats live inference. We have unlimited time to analyze history.
+
+**Development Mantra**: Data quality > game polish. Classification accuracy > real-time reaction.
+
+**Phase 1 Goal**: Prove that session embeddings cluster by archetype and Tier 1 classification works.
+
+Everything else is future work. Stay focused on the foundation.

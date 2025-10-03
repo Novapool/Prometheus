@@ -1,178 +1,265 @@
+# Persistent Player Modeling System
+## Building Enemies That Learn Your Playstyle Over Time
 
+---
 
-# Adaptive Combat AI Framework Project
+## 🎯 What This Project Is
 
-## Project Overview
+**A persistent player profile system that evolves over many play sessions, creating increasingly personalized enemy behavior that adapts to individual playstyles.**
 
-**Project Name:** Universal Adaptive Combat AI Framework  
-**Project Type:** Machine Learning + Game Development Research Project  
-**Timeline:** 12-18 months  
-**Goal:** Create a universal AI system that can be plugged into any combat-oriented game to make enemies adapt to individual player behavior patterns in real-time.
+Think of it like **Netflix for enemy AI**: Instead of deciding what you like from your first 10 minutes, it learns over weeks and months. Your system learns combat behavior the same way.
 
-## Core Concept
+### The Core Idea
 
-This project develops an AI framework that acts as a "player behavior classifier" combined with a "strategic response system." Instead of programming specific game mechanics, the AI learns to recognize universal combat psychology patterns (aggressive vs defensive, risk-taking vs conservative, etc.) and provides strategic recommendations that game developers can implement using their own game mechanics.
+You're **NOT** building:
+- ❌ Real-time reactive AI that changes mid-match
+- ❌ Live inference during gameplay
+- ❌ Game-specific AI system
 
-## The Problem We're Solving
+You **ARE** building:
+- ✅ Persistent player profiles that deepen over time
+- ✅ Hierarchical classification that becomes more specific with data
+- ✅ Enemy tactics that adapt between sessions based on accumulated knowledge
+- ✅ Universal system that transfers insights across different games
 
-- **Current State:** Game AI uses fixed patterns, scripted behaviors, or simple reactive systems
-- **Player Experience:** Enemies become predictable, boring, and don't provide personalized challenge
-- **Developer Pain Point:** Creating adaptive AI requires extensive custom programming for each game
-- **Market Gap:** No universal solution exists for cross-game adaptive combat AI
+### Why This Matters
 
-## Project Vision
+**For Players**: Games that feel personalized, enemies that "know" your style, increased replay value
 
-Create a "plug-and-play" AI system where:
-1. Any game can send standardized player behavior data to the AI
-2. The AI classifies player patterns and strategic tendencies
-3. The AI returns strategic recommendations (not specific actions)
-4. Game developers implement these recommendations using their own game mechanics
-5. The AI continuously learns and adapts to individual players across sessions
+**For Developers**: Plug-and-play adaptive AI without custom programming for each game
 
-## Core Components
+**For You**: Novel ML application combining game development with persistent behavioral modeling
 
-### 1. Player Behavior Classification System
-- **Function:** Analyzes player actions and categorizes behavioral patterns
-- **Input:** Standardized game state data (position, timing, actions, outcomes)
-- **Output:** Player behavior classifications (aggression level, risk tolerance, spatial preferences, etc.)
-- **Technology Approach:** Machine learning classification algorithms trained on diverse gameplay data
+---
 
-### 2. Universal Game State Abstraction Layer
-- **Function:** Converts game-specific data into standardized format
-- **Purpose:** Allows the AI to work across different games without knowing specific mechanics
-- **Components:** Input standardization, state normalization, pattern extraction
-- **Example:** "Player used sniper rifle from high ground" → "Player prefers long-range, positional combat"
+## 🌳 How It Works (Simplified)
 
-### 3. Strategic Response Engine
-- **Function:** Takes player classifications and generates appropriate counter-strategies
-- **Output:** High-level strategic recommendations
-- **Examples:** "Increase pressure on defensive players," "Use indirect approaches against campers," "Vary timing against pattern-recognition players"
+### Hierarchical Classification Tree
 
-### 4. Game Integration API
-- **Function:** Provides standardized interface for games to communicate with the AI
-- **Input Interface:** Games send player action data in standardized format
-- **Output Interface:** AI returns strategic recommendations
-- **Developer Tools:** Documentation, testing tools, integration guides
+**Tier 1** (5-10 matches): Broad playstyle
+- Aggressive, Defensive, Tactical, Mobile, Chaotic
 
-## Project Phases
+**Tier 2** (15-30 matches): Combat archetype
+- Aggressive → Berserker, Flanker, Rusher
+- Defensive → Sniper, Skirmisher, Fortress
+- Tactical → Ambusher, Controller, Adaptive
+- Mobile → Ghost, Harasser, Scout
 
-### Phase 1: Proof of Concept (Months 1-4)
-**Objective:** Demonstrate core concept works in controlled environment
-- Build simple combat game for testing
-- Implement basic player behavior classification (3-4 categories)
-- Create simple strategic response system
-- Prove AI can adapt to different player styles
-- **Success Criteria:** AI demonstrably changes behavior based on player patterns
+**Tier 3** (50+ matches): Specialization
+- Sniper → Patient Marksman, Suppressor, Relocator
+- Rusher → Tank Build, Glass Cannon, Momentum Fighter
 
-### Phase 2: Framework Development (Months 5-8)
-**Objective:** Build the universal abstraction layer
-- Design standardized input/output formats
-- Create game state abstraction system
-- Expand classification categories (10+ behavior types)
-- Build API for game integration
-- Test with 2-3 different simple games
-- **Success Criteria:** Same AI works across multiple different game types
+**Tier 4** (100+ matches): Micro-preferences
+- Exact engagement distances, reload patterns, target selection, stress responses
 
-### Phase 3: Real-World Integration (Months 9-12)
-**Objective:** Integrate with actual game engine
-- Build integration tools for major game engines
-- Optimize for real-time performance
-- Test with existing games/demos
-- Refine classification accuracy
-- **Success Criteria:** Seamless integration with professional game development tools
+### Technical Architecture
 
-### Phase 4: Advanced Features (Months 13-18)
-**Objective:** Add production-ready capabilities
-- Multi-player adaptation (enemies learn from multiple players)
-- Long-term player modeling (remembers players across sessions)
-- Advanced strategic reasoning
-- Performance analytics and debugging tools
-- **Success Criteria:** Production-ready system suitable for commercial games
+```
+Match Data → Session Encoder (LSTM) → Session Embedding (256D)
+                                              ↓
+Multiple Sessions → Transformer → Player Profile (768D)
+                                              ↓
+                    Hierarchical Classifiers (RF at each tier)
+                                              ↓
+                          Enemy Adaptation Parameters
+```
 
-## Technical Challenges & Approach
+### Universal Abstraction
 
-### Challenge 1: Behavioral Pattern Recognition
-- **Problem:** Identifying meaningful patterns in noisy player data
-- **Approach:** Start with clear, distinct patterns and gradually add nuance
-- **Success Metrics:** Classification accuracy, adaptation speed
+Focus on combat psychology, not game mechanics:
+- "Aggressive" means the same in any combat game
+- Metrics normalized to percentages/ratios
+- Works across FPS, top-down, action RPG, etc.
 
-### Challenge 2: Cross-Game Generalization
-- **Problem:** Making insights from one game work in completely different games
-- **Approach:** Focus on universal combat psychology rather than specific mechanics
-- **Success Metrics:** Transferability of learned patterns across game types
+---
 
-### Challenge 3: Real-Time Performance
-- **Problem:** Game AI needs sub-millisecond response times
-- **Approach:** Lightweight inference models, efficient state representation
-- **Success Metrics:** Response time under performance budgets
+## 📅 Development Roadmap
 
-### Challenge 4: Developer Adoption
-- **Problem:** Framework must be easy to integrate and use
-- **Approach:** Extensive documentation, simple APIs, clear examples
-- **Success Metrics:** Integration time, developer feedback
+### ✅ Phase 1: Foundation (Months 1-3) ← YOU ARE HERE
 
-## Success Metrics
+**Goal**: Prove core concept works
 
-### Technical Metrics
-- **Adaptation Speed:** How quickly AI recognizes player patterns
-- **Classification Accuracy:** How well AI identifies player behavior types
-- **Cross-Game Transfer:** How well patterns learned in one game apply to others
-- **Performance:** Response time, memory usage, CPU impact
+**Tasks**:
+- ✅ Build simple combat training game (`game.py`)
+- ✅ Implement comprehensive data logging (`DataLogger`)
+- ⏳ Build session encoder (LSTM for match compression)
+- ⏳ Create Tier 1 classifier (5 broad categories)
+- ⏳ Collect 5,000+ sessions from 100 players
+- ⏳ Implement basic enemy adaptation
 
-### User Experience Metrics
-- **Player Engagement:** Do players find AI enemies more interesting?
-- **Difficulty Adaptation:** Does AI provide appropriate challenge levels?
-- **Replayability:** Do games feel different on multiple playthroughs?
+**Success Criteria**: 70%+ accuracy distinguishing Aggressive vs Defensive vs Tactical
 
-### Business Metrics
-- **Developer Adoption:** How many games integrate the framework?
-- **Integration Effort:** How long does it take developers to implement?
-- **Market Impact:** Interest from game studios, potential licensing opportunities
+---
 
-## Potential Applications & Market
+### Phase 2: Depth & History (Months 4-6)
 
-### Primary Market: Game Developers
-- Independent developers seeking better AI without large teams
-- AA/AAA studios wanting to enhance existing games
-- Mobile game developers needing adaptive difficulty
+**Goal**: Add temporal awareness and deeper classification
 
-### Use Cases
-- **Single-player games:** Personalized enemy behavior
-- **Training systems:** Adaptive opponents for skill development  
-- **Competitive games:** Dynamic practice partners
-- **Educational games:** Adaptive challenge progression
+**Tasks**:
+- Build Transformer for cross-session synthesis
+- Implement Tier 2 classification (15-20 archetypes)
+- Create persistent profile storage (PostgreSQL + vector DB)
+- Enhanced adaptation based on Tier 2
 
-### Long-term Vision
-- Steam Workshop integration for community AI behaviors
-- Game engine marketplace plugins
-- SaaS platform for indie developers
-- Research platform for game AI advancement
+**Success Criteria**: After 15 matches, accurate archetype classification
 
-## Project Deliverables
+---
 
-1. **Working AI Framework:** Core system that demonstrates adaptive behavior
-2. **Integration Tools:** APIs, SDKs, and documentation for game developers
-3. **Demonstration Games:** Multiple games showing cross-platform capability
-4. **Research Documentation:** Technical papers, blog posts, case studies
-5. **Open Source Components:** Selected parts of framework available publicly
-6. **Developer Community:** Resources, tutorials, and support ecosystem
+### Phase 3: Specialization (Months 7-9)
 
-## Why This Project Matters
+**Goal**: Fine-grained personalization
 
-### For the Industry
-- Pushes forward the state of game AI
-- Provides practical solution to common developer problem
-- Demonstrates AI applications beyond traditional domains
+**Tasks**:
+- Tier 3 classification (40-60 specializations)
+- Micro-preference detection
+- Advanced adaptation with meta-counters
+- Cross-session learning (account for breaks, fatigue)
 
-### For Career Development  
-- Combines multiple in-demand skills (ML, game development, system architecture)
-- Addresses real business needs in growing industry
-- Creates tangible, demonstrable results
-- Shows innovation and independent project execution
+**Success Criteria**: 50+ matches = highly personalized enemy behavior
 
-### For Players
-- More engaging, personalized gaming experiences
-- Dynamic difficulty that adapts to individual skill and style
-- Increased replay value through adaptive opponents
+---
 
-This project represents the intersection of cutting-edge AI research and practical game development, with clear commercial potential and technical innovation that would be highly valued by companies like Valve.
+### Phase 4: Transfer Learning (Months 10-12)
+
+**Goal**: Make it work across different games
+
+**Tasks**:
+- Build abstraction API for universal game integration
+- Test in completely different game (FPS, 3D action, etc.)
+- Validate classification transfer
+- Create developer toolkit
+
+**Success Criteria**: Same AI works across multiple game genres
+
+---
+
+### Phase 5: Production (Months 13+)
+
+**Goal**: Commercial-ready system
+
+**Tasks**:
+- Real-time optimization (<50ms inference)
+- Player-facing dashboards ("You are a Berserker (Tank Build)")
+- Continuous learning pipeline
+- SDK/middleware for game engines
+
+**Success Criteria**: Production-ready for commercial games
+
+---
+
+## 🎮 Current Status
+
+### What's Built
+- Top-down combat training game (Wave-based survival)
+- Comprehensive telemetry logging system
+- Data collection for player behavior patterns
+- Basic enemy AI types (aggressive, sniper)
+
+### What You're Working On Now
+**Phase 1 - Week 1-4**:
+1. Refine game to have clear archetype separation
+2. Collect 500 sessions from 10+ players
+3. Build LSTM session encoder
+4. Validate embeddings cluster by playstyle
+
+### Next Immediate Steps
+1. Test game with diverse players
+2. Manually label player archetypes from gameplay
+3. Engineer 20-30 features per session
+4. Train initial Random Forest classifier
+5. Achieve 65%+ accuracy on Tier 1
+
+---
+
+## 🚀 Running the Project
+
+### Start the Training Game
+```bash
+python game.py
+```
+
+### Controls
+- **WASD/Arrows**: Move
+- **Mouse**: Aim
+- **Left Click**: Shoot
+- **ESC**: Quit and save data
+
+### Data Output
+Gameplay sessions saved as: `gameplay_data_{timestamp}.json`
+
+---
+
+## 📊 Success Metrics
+
+### Phase 1 Targets
+- **Classification**: 70%+ accuracy on Tier 1 after 5 matches
+- **Data Collection**: 5,000+ sessions from 100+ unique players
+- **Adaptation**: 60%+ players notice enemy behavior differences
+
+### Long-term Targets
+- **Tier 2**: 55%+ accuracy after 15 matches
+- **Tier 3**: 40%+ accuracy after 50 matches
+- **Engagement**: 40%+ player retention at 15+ sessions
+- **Perception**: 70%+ players identify their archetype correctly
+
+---
+
+## 💡 Key Insights
+
+### Why Persistent Learning > Live Inference
+
+**Live systems**: Must decide in milliseconds with limited context
+**Your system**: Unlimited time to analyze full history = better accuracy
+
+**Analogy**: Doctor diagnosing you in 5 minutes vs. reviewing your entire medical history
+
+### Why This Approach Works
+
+1. **Netflix model**: Broad suggestions early → refined recommendations later
+2. **Cross-session understanding**: Not reaction, but understanding who you are as a player
+3. **Universal patterns**: Combat psychology transfers across game mechanics
+4. **Progressive refinement**: New players get quick classification, veterans get personalization
+
+---
+
+## 🛠️ Technical Stack
+
+**Current (Phase 1)**:
+- Python + Pygame
+- JSON data logging
+- Manual feature engineering
+
+**Planned (Phase 2+)**:
+- PyTorch (LSTM + Transformer models)
+- PostgreSQL + Pinecone/Weaviate (vector DB)
+- FastAPI (integration API)
+- Scikit-learn (hierarchical classifiers)
+
+---
+
+## 📁 Project Structure
+
+```
+/Prometheus
+├── game.py              # Training game + data collection
+├── requirements.txt     # Dependencies
+├── README.md           # This file
+├── CLAUDE.md           # AI assistant context
+└── gameplay_data/      # Collected session data (gitignored)
+```
+
+---
+
+## 🎯 Remember
+
+**The current game is NOT the product** - it's a data collection tool and proof of concept.
+
+**The real product** is the universal persistent player modeling framework that works across any combat game.
+
+**Focus on**: Data quality, clear pattern separation, validated learning
+
+**Avoid**: Over-engineering the game, adding unnecessary features, losing sight of the ML goal
+
+---
+
+*Building the future of personalized game AI, one session at a time.*
